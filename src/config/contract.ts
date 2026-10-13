@@ -11,4 +11,4 @@ export const EDUPROOF_ABI = [
 
 // Optional default address from .env (VITE_CONTRACT_ADDRESS=0x...).
 // You can also paste the address in the app's "Contract Setup" panel.
-export const DEFAULT_CONTRACT_ADDRESS: string = import.meta.env.VITE_CONTRACT_ADDRESS ?? "";
+export const DEFAULT_CONTRACT_ADDRESS: string = import.meta.env["VITE_CONTRACT_ADDRESS"] ?? "";

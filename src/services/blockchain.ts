@@ -10,6 +10,15 @@ declare global {
 }
 
 const ADDRESS_KEY = "eduproof.contractAddress";
+// Typed view of the contract functions we call
+type TxResponse = { hash: string; wait: () => Promise<{ blockNumber: number } | null> };
+interface EduProofContract {
+  owner(): Promise<string>;
+  issueCertificate(id: string, hash: string): Promise<TxResponse>;
+  revokeCertificate(id: string): Promise<TxResponse>;
+  getCertificate(id: string): Promise<{ certHash: string; exists: boolean; revoked: boolean; issuedAt: bigint }>;
+}
+
 const RPC_KEY = "eduproof.rpcUrl";
 
 // ---------- Configuration (saved in the browser) ----------
@@ -43,7 +52,7 @@ export async function connectWallet(): Promise<{ account: string; network: Netwo
   const provider = new BrowserProvider(window.ethereum!);
   const accounts = (await provider.send("eth_requestAccounts", [])) as string[];
   const net = await provider.getNetwork();
-  return { account: accounts[0], network: { chainId: Number(net.chainId), name: net.name } };
+  return { account: accounts[0] ?? "", network: { chainId: Number(net.chainId), name: net.name } };
 }
 
 /** Read-only provider: custom RPC URL if set, otherwise MetaMask. */
@@ -69,8 +78,8 @@ async function getWriteContract() {
   await provider.send("eth_requestAccounts", []);
   await ensureContractDeployed(provider, address);
   const signer = await provider.getSigner();
-  const contract = new Contract(address, EDUPROOF_ABI, signer);
-  const owner: string = await contract.owner();
+  const contract = new Contract(address, EDUPROOF_ABI, signer) as unknown as EduProofContract;
+  const owner = await contract.owner();
   const me = await signer.getAddress();
   if (owner.toLowerCase() !== me.toLowerCase()) {
     throw new Error(`Connected wallet ${me} is not the contract owner (${owner}). Only the owner can issue or revoke certificates.`);
@@ -92,21 +101,21 @@ export async function issueCertificate(certificateId: string, certHash: string) 
   if (existing.exists) throw new Error(`Certificate ID "${certificateId}" is already registered.`);
   const tx = await contract.issueCertificate(certificateId, certHash);
   const receipt = await tx.wait(); // wait for confirmation
-  return { txHash: tx.hash as string, blockNumber: receipt?.blockNumber as number };
+  return { txHash: tx.hash, blockNumber: receipt?.blockNumber ?? 0 };
 }
 
 export async function revokeCertificate(certificateId: string) {
   const contract = await getWriteContract();
   const tx = await contract.revokeCertificate(certificateId);
   const receipt = await tx.wait();
-  return { txHash: tx.hash as string, blockNumber: receipt?.blockNumber as number };
+  return { txHash: tx.hash, blockNumber: receipt?.blockNumber ?? 0 };
 }
 
 export async function getCertificate(certificateId: string): Promise<CertificateRecord> {
   const address = requireAddress();
   const provider = await getReadProvider();
   await ensureContractDeployed(provider, address);
-  const contract = new Contract(address, EDUPROOF_ABI, provider);
+  const contract = new Contract(address, EDUPROOF_ABI, provider) as unknown as EduProofContract;
   const r = await contract.getCertificate(certificateId);
   return { certHash: r.certHash, exists: r.exists, revoked: r.revoked, issuedAt: Number(r.issuedAt) };
 }
